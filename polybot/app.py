@@ -1,16 +1,41 @@
 import flask
 from flask import request
 import os
-from bot import ObjectDetectionBot
+from bot import Bot, ObjectDetectionBot
+import boto3
+from botocore.exceptions import ClientError
+import logging
 
 app = flask.Flask(__name__)
 
-
 # TODO load TELEGRAM_TOKEN value from Secret Manager
-TELEGRAM_TOKEN = ...
+
+# Load TELEGRAM_TOKEN from Secret Manager
+secret_name = "gershon-secrets.env"
+region_name = "us-east-2"
+session = boto3.session.Session()
+client = session.client(service_name='secretsmanager', region_name=region_name)
+TELEGRAM_TOKEN = client.get_secret_value(SecretId=secret_name)['SecretString']
+
+def get_secret(secret_name, region_name):
+    session = boto3.session.Session()
+    client = session.client(service_name='secretsmanager', region_name=region_name)
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        logging.error(f"Error retrieving secret '{secret_name}' from AWS Secrets Manager: {e}")
+        raise e
+
+    return get_secret_value_response['SecretString']
+
 
 TELEGRAM_APP_URL = os.environ['TELEGRAM_APP_URL']
 
+# Initialize ObjectDetectionBot
+bot = ObjectDetectionBot(TELEGRAM_TOKEN, TELEGRAM_APP_URL)
 
 @app.route('/', methods=['GET'])
 def index():

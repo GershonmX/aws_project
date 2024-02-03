@@ -3,9 +3,32 @@ from loguru import logger
 import os
 import time
 from telebot.types import InputFile
+import boto3
 
 
 class Bot:
+    def get_secret():
+
+        secret_name = "gershon-secrets.env"
+        region_name = "us-east-2"
+
+        # Create a Secrets Manager client
+        session = boto3.session.Session()
+        client = session.client(
+            service_name='secretsmanager',
+            region_name=region_name
+        )
+
+        try:
+            get_secret_value_response = client.get_secret_value(
+                SecretId=secret_name
+            )
+        except ClientError as e:
+            # For a list of exceptions thrown, see
+            # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+            raise e
+
+        secret = get_secret_value_response['SecretString']
 
     def __init__(self, token, telegram_chat_url):
         # create a new instance of the TeleBot class.
@@ -17,8 +40,7 @@ class Bot:
         time.sleep(0.5)
 
         # set the webhook URL
-        self.telegram_bot_client.set_webhook(url=f'{telegram_chat_url}/{token}/', timeout=60)
-
+        self.telegram_bot_client.set_webhook(url=f'{telegram_chat_url}/{token}/', timeout=60, certificate=open(f'/app/<NAME OF PUBLIC CERT.pem FILE>, 'r'))
         logger.info(f'Telegram Bot information\n\n{self.telegram_bot_client.get_me()}')
 
     def send_text(self, chat_id, text):
@@ -66,8 +88,26 @@ class Bot:
 
 
 class ObjectDetectionBot(Bot):
+    def __init__(self, token, telegram_chat_url):
+        super().__init__(token, telegram_chat_url)
+        self.processing_comple
+
     def handle_message(self, msg):
-        logger.info(f'Incoming message: {msg}')
+        # If the message contains a photo, check if it also has a caption
+        if "caption" in msg:
+            caption = msg["caption"]
+            if "concat" in caption.lower():
+                self.process_image(msg)
+            if "contour" in caption.lower():
+                self.process_image_contur(msg)
+            if "rotate" in caption.lower():
+                self.process_image_rotate(msg)
+            if "predict" in caption.lower():
+                self.upload_2_S3(msg)
+
+        if not self.processing_completed:
+            logger.info("Previous message processing is not completed. Ignoring current message.")
+            return
 
         if self.is_current_msg_photo(msg):
             photo_path = self.download_user_photo(msg)
@@ -75,3 +115,85 @@ class ObjectDetectionBot(Bot):
             # TODO upload the photo to S3
             # TODO send a job to the SQS queue
             # TODO send message to the Telegram end-user (e.g. Your image is being processed. Please wait...)
+
+        def process_image_contur(self, msg):
+            self.processing_completed = False
+
+            # Download the two photos sent by the user
+            image_path = self.download_user_photo(msg)
+
+            # Create two different Img objects from the downloaded images
+            image = Img(image_path)
+
+            # Process the image using your custom methods (e.g., apply filter)
+            image.contour()  # contur the image
+
+            # Save the processed image to the specified folder
+            processed_image_path = image.save_img()
+
+            if processed_image_path is not None:
+                # Send the processed image back to the user
+                self.send_photo(msg['chat']['id'], processed_image_path)
+
+            self.processing_completed = True
+
+        def process_image_rotate(self, msg):
+            self.processing_completed = False
+
+            # Download the two photos sent by the user
+            image_path = self.download_user_photo(msg)
+
+            # Create two different Img objects from the downloaded images
+            image = Img(image_path)
+
+            # Process the image using your custom methods (e.g., apply filter)
+            image.rotate()  # rotate the image
+
+            # Save the processed image to the specified folder
+            processed_image_path = image.save_img()
+
+            if processed_image_path is not None:
+                # Send the processed image back to the user
+                self.send_photo(msg['chat']['id'], processed_image_path)
+
+            self.processing_completed = True
+
+
+        def upload_2_S3(self, msg):
+            self.processing_completed = False
+            image_path = self.download_user_photo(msg)
+            # Upload the image to S3
+            s3_client = boto3.client('s3')
+            images_bucket = 'BUCKET_NAME'
+            s3_key = f'{msg["chat"]["id"]}.jpeg'
+            s3_client.upload_file(image_path, images_bucket, s3_key)
+
+            time.sleep(3)
+
+            # Create an SQS client
+            sqs = boto3.client('sqs', region_name='region_name')
+            # Your SQS queue URL (replace with your actual SQS queue URL)
+            queue_url = < 'YOUR-AWS-SQS-URL'
+
+    >
+    # Create a message with a custom message ID
+    message_body = str(msg["chat"]["id"])
+    message_id = s3_key
+    response = sqs.send_message(
+        QueueUrl=queue_url,
+        MessageBody=message_body,
+        MessageAttributes={
+            'CustomMessageID': {
+                'DataType': 'String',
+                'StringValue': message_id
+            }
+        }
+    )
+
+    # Check for a successful response (optional)
+    if response['ResponseMetadata']['HTTPStatusCode'] == 200:
+        print(f"Message with ID {message_id} sent successfully.")
+    time.sleep(3)
+    self.send_text(msg['chat']['id'], f'Please wait your image is being processed...')
+    self.processing_completed = True
+
