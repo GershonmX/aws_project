@@ -2,33 +2,9 @@ import telebot
 from loguru import logger
 import os
 import time
-from telebot.types import InputFile
 import boto3
 
-
 class Bot:
-    def get_secret():
-
-        secret_name = "gershon-secrets.env"
-        region_name = "us-east-2"
-
-        # Create a Secrets Manager client
-        session = boto3.session.Session()
-        client = session.client(
-            service_name='secretsmanager',
-            region_name=region_name
-        )
-
-        try:
-            get_secret_value_response = client.get_secret_value(
-                SecretId=secret_name
-            )
-        except ClientError as e:
-            # For a list of exceptions thrown, see
-            # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
-            raise e
-
-        secret = get_secret_value_response['SecretString']
 
     def __init__(self, token, telegram_chat_url):
         # create a new instance of the TeleBot class.
@@ -90,9 +66,13 @@ class Bot:
 class ObjectDetectionBot(Bot):
     def __init__(self, token, telegram_chat_url):
         super().__init__(token, telegram_chat_url)
-        self.processing_comple
+        self.processing_completed  = True
 
     def handle_message(self, msg):
+        if not self.processing_completed:
+            logger.info("Previous message processing is not completed. Ignoring current message.")
+            return
+
         # If the message contains a photo, check if it also has a caption
         if "caption" in msg:
             caption = msg["caption"]
@@ -109,8 +89,8 @@ class ObjectDetectionBot(Bot):
             logger.info("Previous message processing is not completed. Ignoring current message.")
             return
 
-        if self.is_current_msg_photo(msg):
-            photo_path = self.download_user_photo(msg)
+        # if self.is_current_msg_photo(msg):
+        #    photo_path = self.download_user_photo(msg)
 
             # TODO upload the photo to S3
             # TODO send a job to the SQS queue
@@ -158,7 +138,6 @@ class ObjectDetectionBot(Bot):
 
             self.processing_completed = True
 
-
         def upload_2_S3(self, msg):
             self.processing_completed = False
             image_path = self.download_user_photo(msg)
@@ -171,11 +150,10 @@ class ObjectDetectionBot(Bot):
             time.sleep(3)
 
             # Create an SQS client
-            sqs = boto3.client('sqs', region_name='region_name')
+            sqs = boto3.client('sqs', region_name='us-east-2')
             # Your SQS queue URL (replace with your actual SQS queue URL)
-            queue_url = < 'YOUR-AWS-SQS-URL'
+            queue_url = 'https://sqs.us-east-2.amazonaws.com/352708296901/Gershonm-sqs-Aws'
 
-    >
     # Create a message with a custom message ID
     message_body = str(msg["chat"]["id"])
     message_id = s3_key
