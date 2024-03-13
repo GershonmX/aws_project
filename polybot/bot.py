@@ -5,6 +5,7 @@ import time
 from telebot.types import InputFile
 import boto3
 from img_proc import Img
+import json
 
 
 class Bot:
@@ -89,6 +90,8 @@ class ImageProcessingBot(Bot):
                     self.process_image_contur(msg)
                 if "rotate" in caption.lower():
                     self.process_image_rotate(msg)
+                if "predict" in caption.lower():
+                    self.upload_2_S3(msg)
 
             else:
                 logger.info("Received photo without a caption.")
@@ -164,7 +167,7 @@ class ImageProcessingBot(Bot):
 
     def process_image_blur(self, msg):
         self.processing_completed = False
-        self.send_text(msg['chat']['id'], text=f'just a sec...')
+        self.send_text(msg['chat']['id'], text=f'A few moments later =)')
 
         # Download the two photos sent by the user
         image_path = self.download_user_photo(msg)
@@ -180,7 +183,7 @@ class ImageProcessingBot(Bot):
 
         if processed_image_path is not None:
             # Send the processed image back to the user
-            self.send_text(msg['chat']['id'], text=f'Done!\nok this is what you want')
+            self.send_text(msg['chat']['id'], text=f'Done!\nHere you go:')
             self.send_photo(msg['chat']['id'], processed_image_path)
 
         self.processing_completed = True
@@ -192,8 +195,9 @@ class ImageProcessingBot(Bot):
         s3_client = boto3.client('s3')
         images_bucket = 'gershonm-s3'
         s3_key = f'{msg["chat"]["id"]}.jpeg'
+        logger.info(f'before-upload')
         s3_client.upload_file(image_path, images_bucket, s3_key)
-
+        logger.info(f'upload-good')
         time.sleep(3)
 
         # Create an SQS client
@@ -201,22 +205,17 @@ class ImageProcessingBot(Bot):
         # Your SQS queue URL (replace with your actual SQS queue URL)
         queue_url = 'https://sqs.us-east-2.amazonaws.com/352708296901/Gershonm-sqs-Aws'
 
+        chat_id = str(msg["chat"]["id"])
+        msg_dict = {"chat_id": chat_id, "s3_key": s3_key}
         # Create a message with a custom message ID
         message_body = str(msg["chat"]["id"])
         message_id = s3_key
         response = sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody=message_body,
-            MessageAttributes={
-                'CustomMessageID': {
-                    'DataType': 'String',
-                    'StringValue': message_id
-                }
-            }
+            MessageBody=json.dumps(msg_dict)
         )
         # Check for a successful response (optional)
         if response['ResponseMetadata']['HTTPStatusCode'] == 200:
             print(f"Message with ID {message_id} sent successfully.")
-        time.sleep(3)
-        self.send_text(msg['chat']['id'], f'Please wait your image is being processed...')
+        self.send_text(msg['chat']['id'], f'just a sec...')
         self.processing_completed = True
